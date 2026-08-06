@@ -273,6 +273,9 @@ interface MusicDao {
     @Query("SELECT id FROM songs WHERE source_type = 6")
     suspend fun getAllJellyfinSongIds(): List<Long>
 
+    @Query("SELECT id FROM songs WHERE source_type = 7")
+    suspend fun getAllAudexSongIds(): List<Long>
+
     @Transaction
     suspend fun deleteSongsAndRelatedData(songIds: List<Long>) {
         if (songIds.isEmpty()) return
@@ -319,6 +322,13 @@ interface MusicDao {
         val jellyfinSongIds = getAllJellyfinSongIds()
         if (jellyfinSongIds.isEmpty()) return
         deleteSongsAndRelatedData(jellyfinSongIds)
+    }
+
+    @Transaction
+    suspend fun clearAllAudexSongs() {
+        val audexSongIds = getAllAudexSongIds()
+        if (audexSongIds.isEmpty()) return
+        deleteSongsAndRelatedData(audexSongIds)
     }
 
     @Transaction
@@ -524,6 +534,12 @@ interface MusicDao {
 
     @Query("SELECT COUNT(*) FROM songs WHERE source_type != 0")
     fun getCloudSongCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM songs WHERE source_type = 7")
+    fun getAudexSongCountFlow(): Flow<Int>
+
+    @Query("SELECT * FROM songs WHERE source_type = 7 ORDER BY title ASC")
+    fun getAudexSongsFlow(): Flow<List<SongEntity>>
 
     @Query("SELECT COUNT(*) FROM songs")
     suspend fun getSongCountOnce(): Int

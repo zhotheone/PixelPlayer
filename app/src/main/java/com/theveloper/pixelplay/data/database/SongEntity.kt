@@ -22,6 +22,7 @@ object SourceType {
     const val QQMUSIC = 4
     const val NAVIDROME = 5
     const val JELLYFIN = 6
+    const val AUDEX = 7
 
     /** Derive source type from a content URI string (fallback for migration / conversion). */
     fun fromContentUri(uri: String): Int = when {

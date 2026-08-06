@@ -2,6 +2,7 @@ package com.theveloper.pixelplay.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.theveloper.pixelplay.data.audex.AudexRepository
 import com.theveloper.pixelplay.data.gdrive.GDriveRepository
 import com.theveloper.pixelplay.data.jellyfin.JellyfinRepository
 import com.theveloper.pixelplay.data.navidrome.NavidromeRepository
@@ -28,7 +29,8 @@ enum class ExternalServiceAccount {
     NETEASE,
     QQ_MUSIC,
     NAVIDROME,
-    JELLYFIN
+    JELLYFIN,
+    AUDEX
 }
 
 data class ExternalAccountUiModel(
@@ -52,7 +54,8 @@ class AccountsViewModel @Inject constructor(
     private val neteaseRepository: NeteaseRepository,
     private val qqMusicRepository: QqMusicRepository,
     private val navidromeRepository: NavidromeRepository,
-    private val jellyfinRepository: JellyfinRepository
+    private val jellyfinRepository: JellyfinRepository,
+    private val audexRepository: AudexRepository
 ) : ViewModel() {
 
     private val loggingOutServices = MutableStateFlow<Set<ExternalServiceAccount>>(emptySet())
@@ -101,6 +104,13 @@ class AccountsViewModel @Inject constructor(
         connected to playlistCount
     }
 
+    private val audexStateFlow = combine(
+        audexRepository.isPairedFlow,
+        audexRepository.syncedSongCountFlow
+    ) { paired, songCount ->
+        paired to songCount
+    }
+
     val uiState: StateFlow<AccountsUiState> = combine(
         combine(
             listOf(
@@ -109,7 +119,8 @@ class AccountsViewModel @Inject constructor(
                 neteaseStateFlow,
                 qqMusicStateFlow,
                 navidromeStateFlow,
-                jellyfinStateFlow
+                jellyfinStateFlow,
+                audexStateFlow
             )
         ) { it.toList() },
         loggingOutServices
@@ -120,6 +131,7 @@ class AccountsViewModel @Inject constructor(
         val (qqConnected, qqPlaylistCount) = states[3] as Pair<Boolean, Int>
         val (navidromeConnected, navidromePlaylistCount) = states[4] as Pair<Boolean, Int>
         val (jellyfinConnected, jellyfinPlaylistCount) = states[5] as Pair<Boolean, Int>
+        val (audexConnected, audexSongCount) = states[6] as Pair<Boolean, Int>
 
         val connectedAccounts = buildList {
             if (telegramConnected) {
@@ -224,6 +236,23 @@ class AccountsViewModel @Inject constructor(
                     )
                 )
             }
+            if (audexConnected) {
+                add(
+                    ExternalAccountUiModel(
+                        service = ExternalServiceAccount.AUDEX,
+                        title = "Audex",
+                        accountLabel = audexRepository.pairedDeviceName
+                            ?.takeIf { it.isNotBlank() }
+                            ?: "Paired with an Audex device",
+                        syncedContentLabel = formatCount(
+                            count = audexSongCount,
+                            singular = "synced track",
+                            plural = "synced tracks"
+                        ),
+                        isLoggingOut = ExternalServiceAccount.AUDEX in activeLogouts
+                    )
+                )
+            }
         }
 
         val disconnectedServices = buildList {
@@ -233,6 +262,7 @@ class AccountsViewModel @Inject constructor(
             if (!qqConnected) add(ExternalServiceAccount.QQ_MUSIC)
             if (!navidromeConnected) add(ExternalServiceAccount.NAVIDROME)
             if (!jellyfinConnected) add(ExternalServiceAccount.JELLYFIN)
+            if (!audexConnected) add(ExternalServiceAccount.AUDEX)
         }
 
         AccountsUiState(
@@ -259,6 +289,7 @@ class AccountsViewModel @Inject constructor(
                         ExternalServiceAccount.QQ_MUSIC -> qqMusicRepository.logout()
                         ExternalServiceAccount.NAVIDROME -> navidromeRepository.logout()
                         ExternalServiceAccount.JELLYFIN -> jellyfinRepository.logout()
+                        ExternalServiceAccount.AUDEX -> audexRepository.unpair()
                     }
                 }
             } finally {

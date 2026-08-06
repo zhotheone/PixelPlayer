@@ -120,6 +120,12 @@
             android:theme="@style/Theme.PixelPlay"
             android:windowSoftInputMode="adjustResize" />
 
+        <activity
+            android:name=".presentation.audex.AudexActivity"
+            android:exported="false"
+            android:label="Audex"
+            android:theme="@style/Theme.PixelPlay"
+            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ExternalPlayerActivity"

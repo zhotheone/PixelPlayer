@@ -27,6 +27,7 @@ import com.theveloper.pixelplay.data.database.TelegramDao // Added
 import com.theveloper.pixelplay.data.database.resolveAlbumArtUri
 import com.theveloper.pixelplay.data.database.serializeArtistRefs
 import com.theveloper.pixelplay.data.diagnostics.AdvancedPerformanceDiagnostics
+import com.theveloper.pixelplay.data.audex.AudexRepository
 import com.theveloper.pixelplay.data.diagnostics.PerformanceMetrics
 import com.theveloper.pixelplay.data.model.ArtistRef
 import com.theveloper.pixelplay.data.navidrome.NavidromeRepository
@@ -77,7 +78,8 @@ constructor(
         private val lyricsRepository: LyricsRepository,
         private val telegramDao: TelegramDao,
         private val neteaseDao: NeteaseDao,
-        private val navidromeRepository: NavidromeRepository
+        private val navidromeRepository: NavidromeRepository,
+        private val audexRepository: AudexRepository
 ) : CoroutineWorker(appContext, workerParams) {
 
     private val contentResolver: ContentResolver = appContext.contentResolver
@@ -462,6 +464,12 @@ constructor(
                         syncNavidromeData()
                     } else {
                         Log.d(TAG, "Skipping Navidrome sync — not logged in.")
+                    }
+
+                    if (audexRepository.isPaired) {
+                        syncAudexData()
+                    } else {
+                        Log.d(TAG, "Skipping Audex sync — not paired.")
                     }
 
                     // Recalculate total
@@ -1731,6 +1739,15 @@ constructor(
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to sync Navidrome data", e)
+        }
+    }
+
+    private suspend fun syncAudexData() {
+        // Cheap (one HTTP call) compared to Navidrome's per-album fan-out, and the
+        // device may well be offline/out of LAN range — just try every run and
+        // move on if it fails, no staleness threshold needed.
+        audexRepository.syncLibrary().onFailure { e ->
+            Log.w(TAG, "Audex sync failed (device may be offline)", e)
         }
     }
 }

@@ -39,6 +39,8 @@ import androidx.compose.material.icons.rounded.CloudQueue
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -79,6 +81,7 @@ import com.theveloper.pixelplay.R
 import com.theveloper.pixelplay.presentation.components.CollapsibleCommonTopBar
 import com.theveloper.pixelplay.presentation.components.MiniPlayerHeight
 import com.theveloper.pixelplay.presentation.components.subcomps.TightWrapText
+import com.theveloper.pixelplay.presentation.audex.AudexActivity
 import com.theveloper.pixelplay.presentation.netease.auth.NeteaseLoginActivity
 import com.theveloper.pixelplay.presentation.jellyfin.auth.JellyfinLoginActivity
 import com.theveloper.pixelplay.presentation.navidrome.auth.NavidromeLoginActivity
@@ -563,6 +566,7 @@ private fun EmptyAccountsCard(
                     ExternalServiceAccount.GOOGLE_DRIVE -> painterResource(R.drawable.rounded_drive_export_24)
                     ExternalServiceAccount.JELLYFIN -> painterResource(R.drawable.ic_jellyfin)
                     ExternalServiceAccount.NAVIDROME -> painterResource(R.drawable.ic_navidrome_md3)
+                    ExternalServiceAccount.AUDEX -> rememberVectorPainter(Icons.Rounded.Wifi)
                 }
                 FilledTonalButton(
                     onClick = { if (!isComingSoon) onConnect(service) },
@@ -655,6 +659,14 @@ private fun servicePalette(service: ExternalServiceAccount): ServicePalette {
             primaryActionContainer = Color(0xFFE3F2FD),
             primaryActionTint = Color(0xFF1565C0)
         )
+        ExternalServiceAccount.AUDEX -> ServicePalette(
+            iconContainer = Color(0xFF6C63FF).copy(alpha = 0.18f),
+            iconTint = Color(0xFF6C63FF),
+            statusContainer = Color(0xFFE6E4FF),
+            statusTint = Color(0xFF4038C7),
+            primaryActionContainer = Color(0xFFE6E4FF),
+            primaryActionTint = Color(0xFF4038C7)
+        )
     }
 }
 
@@ -666,6 +678,7 @@ private fun accountIcon(service: ExternalServiceAccount): ImageVector {
         ExternalServiceAccount.QQ_MUSIC -> Icons.Rounded.MusicNote
         ExternalServiceAccount.NAVIDROME -> Icons.Rounded.CloudQueue
         ExternalServiceAccount.JELLYFIN -> Icons.Rounded.CloudQueue
+        ExternalServiceAccount.AUDEX -> Icons.Rounded.Wifi
     }
 }
 
@@ -721,6 +734,7 @@ private fun serviceDisplayName(service: ExternalServiceAccount): String {
         ExternalServiceAccount.QQ_MUSIC -> stringResource(R.string.auth_qq_title)
         ExternalServiceAccount.NAVIDROME -> stringResource(R.string.auth_subsonic_title)
         ExternalServiceAccount.JELLYFIN -> stringResource(R.string.auth_jellyfin_title)
+        ExternalServiceAccount.AUDEX -> "Audex"
     }
 }
 
@@ -782,6 +796,12 @@ private fun openService(
                     intent = Intent(context, JellyfinLoginActivity::class.java)
                 )
             }
+        }
+        ExternalServiceAccount.AUDEX -> {
+            safeStartActivity(
+                context = context,
+                intent = Intent(context, AudexActivity::class.java)
+            )
         }
     }
 }
