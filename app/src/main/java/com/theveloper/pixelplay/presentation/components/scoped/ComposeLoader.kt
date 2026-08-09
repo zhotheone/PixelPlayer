@@ -74,15 +74,16 @@ fun rememberSmoothProgress(
     val latestSampleWhilePausedMs by rememberUpdatedState(sampleWhilePausedMs)
     val latestIsVisible by rememberUpdatedState(isVisible)
 
-    val safeUpperBound = totalDuration.coerceAtLeast(0L)
-    val safeDuration = totalDuration.coerceAtLeast(1L)
-
+    // Duration can be genuinely unknown (0) for a while — e.g. streaming a track
+    // whose source reported no duration and whose length the player hasn't derived
+    // yet. In that case DON'T clamp the elapsed position to [0,0]: the time readout
+    // must keep advancing while audio plays. The fraction just stays 0 (no total to
+    // divide by) until a duration is known.
     LaunchedEffect(totalDuration) {
         fun sampleNow() {
-            val rawPosition = latestPositionProvider()
-            val clampedPosition = rawPosition.coerceIn(0L, safeUpperBound)
-            sampledPosition = clampedPosition
-            sampledFraction = (clampedPosition / safeDuration.toFloat()).coerceIn(0f, 1f)
+            val rawPosition = latestPositionProvider().coerceAtLeast(0L)
+            sampledPosition = if (totalDuration > 0L) rawPosition.coerceAtMost(totalDuration) else rawPosition
+            sampledFraction = if (totalDuration > 0L) (rawPosition / totalDuration.toFloat()).coerceIn(0f, 1f) else 0f
         }
 
         sampleNow()
@@ -115,7 +116,7 @@ fun rememberSmoothProgress(
 
     val displayedPositionState = remember(totalDuration) {
         derivedStateOf {
-            sampledPosition.coerceIn(0L, totalDuration.coerceAtLeast(0L))
+            if (totalDuration > 0L) sampledPosition.coerceIn(0L, totalDuration) else sampledPosition
         }
     }
 

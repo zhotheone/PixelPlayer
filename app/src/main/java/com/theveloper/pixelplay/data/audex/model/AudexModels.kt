@@ -19,6 +19,8 @@ data class AudexTrack(
     val artist: String = "",
     val album: String = "",
     val albumArtist: String = "",
+    val trackNo: String = "",
+    val discNo: String = "",
     val duration: Double = 0.0, // seconds
     val url: String,
     val coverUrl: String? = null,

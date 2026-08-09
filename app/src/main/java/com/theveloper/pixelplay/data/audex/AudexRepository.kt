@@ -188,17 +188,29 @@ class AudexRepository @Inject constructor(
                 }
 
                 val deviceLabel = pairedDeviceName ?: creds.host
-                // Computed once over the *whole* list (cheap, no I/O) so a track's
-                // album gets the correct total songCount regardless of which batch
-                // happens to carry that AlbumEntity's insert. Keyed by albumArtist,
-                // NOT the per-track artist — two tracks on the same album can have
-                // different/differently-formatted track artists (e.g. a feature:
-                // "Gay" vs "Gay, Lesbian"), and keying on that split one real album
-                // into several. albumArtist is the tag that's supposed to be
-                // consistent across an album's tracks; blank is fine too as long
-                // as every track on the album leaves it blank the same way.
-                val albumCounts = tracks.groupingBy { unifiedAlbumId(it.album.ifBlank { "Unknown Album" }, it.albumArtist) }
+                // An album's identity is its NAME, nothing else. We used to fold
+                // albumArtist into the key, assuming it's the one tag that stays
+                // consistent across an album's tracks — but in real libraries it
+                // isn't: plenty of rippers write albumArtist == the per-track
+                // artist on every track, so a compilation/feature-heavy album
+                // varies exactly like `artist` and split into one "album" per
+                // artist; others tag it on some tracks and leave it blank on
+                // others, which split the same album two ways. Keying on the name
+                // alone and deriving ONE canonical album-artist from all the
+                // album's tracks fixes both.
+                // ponytail: two genuinely-distinct albums that share an exact
+                // (trimmed/lowercased) name merge into one — accepted for a
+                // personal LAN library (the old code already did this whenever
+                // albumArtist was blank); revisit only if it bites.
+                val albumCounts = tracks.groupingBy { unifiedAlbumId(it.album.ifBlank { "Unknown Album" }) }
                     .eachCount()
+                // canonical album-artist per album: the sole non-blank albumArtist
+                // if there's exactly one, else the sole non-blank track artist if
+                // there's exactly one, else "Various Artists" (or "Unknown Artist"
+                // when there's nothing at all to go on).
+                val albumArtistByAlbum: Map<Long, String> = tracks
+                    .groupBy { unifiedAlbumId(it.album.ifBlank { "Unknown Album" }) }
+                    .mapValues { (_, group) -> canonicalAlbumArtist(group) }
                 val existingIds = musicDao.getAllAudexSongIds()
                 val currentIds = tracks.map { unifiedSongId(it.id) }.toSet()
                 val deletedIds = existingIds.filter { it !in currentIds }
@@ -236,19 +248,18 @@ class AudexRepository @Inject constructor(
                         batchCrossRefs.add(SongArtistCrossRef(songId = songId, artistId = artistId, isPrimary = true))
 
                         val albumName = track.album.ifBlank { "Unknown Album" }
-                        val albumId = unifiedAlbumId(albumName, track.albumArtist)
+                        val albumId = unifiedAlbumId(albumName)
                         val coverUri = coverUris[track.id]
-                        // Prefer the albumArtist tag for the album's own display
-                        // artist/artistId; only fall back to this particular
-                        // track's artist when albumArtist wasn't tagged at all.
-                        val albumArtistName = track.albumArtist.ifBlank { artistName }
-                        val albumArtistId = if (track.albumArtist.isBlank()) {
-                            artistId
-                        } else {
-                            unifiedArtistId(albumArtistName).also { id ->
-                                batchArtists.putIfAbsent(id, ArtistEntity(id = id, name = albumArtistName, trackCount = 0, imageUrl = null))
-                            }
-                        }
+                        // One canonical album-artist for the whole album (computed
+                        // up front over every track), so its display and its
+                        // artistId are the same no matter which track's batch first
+                        // inserts the AlbumEntity.
+                        val albumArtistName = albumArtistByAlbum[albumId] ?: "Unknown Artist"
+                        val albumArtistId = unifiedArtistId(albumArtistName)
+                        batchArtists.putIfAbsent(
+                            albumArtistId,
+                            ArtistEntity(id = albumArtistId, name = albumArtistName, trackCount = 0, imageUrl = null)
+                        )
                         batchAlbums.putIfAbsent(
                             albumId,
                             AlbumEntity(
@@ -260,7 +271,7 @@ class AudexRepository @Inject constructor(
                                 dateAdded = System.currentTimeMillis(),
                                 year = 0,
                                 albumArtUriString = coverUri,
-                                albumArtist = track.albumArtist.ifBlank { null }
+                                albumArtist = albumArtistName
                             )
                         )
 
@@ -269,12 +280,14 @@ class AudexRepository @Inject constructor(
                             title = track.title.ifBlank { "Unknown" },
                             artistName = artistName,
                             artistId = artistId,
-                            albumArtist = track.albumArtist.ifBlank { null },
+                            albumArtist = albumArtistName,
                             albumName = albumName,
                             albumId = albumId,
                             contentUriString = track.url,
                             albumArtUriString = coverUri,
                             duration = (track.duration * 1000).toLong(),
+                            trackNumber = track.trackNo.toIntOrNull() ?: 0,
+                            discNumber = track.discNo.toIntOrNull(),
                             genre = null,
                             filePath = "",
                             parentDirectoryPath = "/Audex/$deviceLabel",
@@ -317,10 +330,28 @@ class AudexRepository @Inject constructor(
     private fun unifiedSongId(trackId: String) =
         -(AUDEX_SONG_ID_OFFSET + trackId.hashCode().toLong().absoluteValue)
 
-    // Keyed by albumArtist (blank counts as its own consistent key), NOT the
-    // per-track artist — see the comment at the syncLibrary() call site.
-    private fun unifiedAlbumId(albumName: String, albumArtist: String) =
-        -(AUDEX_ALBUM_ID_OFFSET + "$albumArtist|$albumName".lowercase().hashCode().toLong().absoluteValue)
+    // Keyed by album NAME only (trimmed/lowercased) — see the comment at the
+    // syncLibrary() call site for why albumArtist is deliberately NOT in the key.
+    private fun unifiedAlbumId(albumName: String) =
+        -(AUDEX_ALBUM_ID_OFFSET + albumName.trim().lowercase().hashCode().toLong().absoluteValue)
+
+    /**
+     * One display artist for an album, reconciled across all its tracks:
+     * the sole non-blank `albumArtist` if there's exactly one, else the sole
+     * non-blank track `artist` if there's exactly one, else "Various Artists"
+     * (or "Unknown Artist" when the album has no artist info at all).
+     */
+    private fun canonicalAlbumArtist(tracks: List<com.theveloper.pixelplay.data.audex.model.AudexTrack>): String {
+        val albumArtists = tracks.mapNotNull { it.albumArtist.ifBlank { null } }.distinct()
+        if (albumArtists.size == 1) return albumArtists[0]
+        if (albumArtists.size >= 2) return "Various Artists"
+        val artists = tracks.mapNotNull { it.artist.ifBlank { null } }.distinct()
+        return when {
+            artists.size == 1 -> artists[0]
+            artists.isEmpty() -> "Unknown Artist"
+            else -> "Various Artists"
+        }
+    }
 
     private fun unifiedArtistId(artistName: String) =
         -(AUDEX_ARTIST_ID_OFFSET + artistName.lowercase().hashCode().toLong().absoluteValue)
